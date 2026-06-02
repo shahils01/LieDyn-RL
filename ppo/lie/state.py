@@ -58,6 +58,10 @@ class LieStateSpec:
                 x_indices = np.arange(default_dim, dtype=np.int64)
             elif group_name == "se2" and vector_dim >= 3:
                 x_indices = np.arange(3, dtype=np.int64)
+            elif group_name == "so3" and vector_dim >= 4:
+                x_indices = np.arange(4, dtype=np.int64)
+            elif group_name == "se3" and vector_dim >= 7:
+                x_indices = np.arange(7, dtype=np.int64)
             else:
                 raise ValueError("--lie_x_indices is required for this Lie group and observation shape.")
         return cls(obs_shape, x_indices=x_indices, obs_key=obs_key)

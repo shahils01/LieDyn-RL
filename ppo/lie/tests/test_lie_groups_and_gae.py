@@ -6,7 +6,9 @@ from ppo.lie.gae import compute_lie_gae
 from ppo.lie.dynamics import LieDynamics
 from ppo.lie.groups.rn import RnGroup
 from ppo.lie.groups.se2 import SE2Group
+from ppo.lie.groups.se3 import SE3Group
 from ppo.lie.groups.so2 import SO2Group
+from ppo.lie.groups.so3 import SO3Group
 from ppo.lie.losses import learned_lie_next_obs_with_z, lie_dynamics_losses
 from ppo.lie.returns import lie_target_mix_alpha
 from ppo.lie.state import LieStateSpec
@@ -45,6 +47,34 @@ def test_se2_observed_transition_reconstructs_next_pose():
     xi = group.infer_algebra(x, x_next)
     x_next_g = group.act(group.exp(xi), x)
     assert torch.allclose(x_next, x_next_g, atol=1e-5)
+
+
+def test_so3_log_exp_inverse_small_rotations():
+    group = SO3Group()
+    xi = 0.1 * torch.randn(64, 3)
+    xi_rec = group.log(group.exp(xi))
+    assert torch.allclose(xi, xi_rec, atol=1e-5)
+
+
+def test_so3_observed_transition_reconstructs_next_quaternion():
+    group = SO3Group()
+    x = group.exp(0.2 * torch.randn(32, 3))
+    delta = group.exp(0.1 * torch.randn(32, 3))
+    x_next = group.act(delta, x)
+    xi = group.infer_algebra(x, x_next)
+    x_next_g = group.act(group.exp(xi), x)
+    assert torch.allclose(x_next, x_next_g, atol=1e-5)
+
+
+def test_se3_observed_transition_reconstructs_next_pose():
+    group = SE3Group()
+    x = torch.cat([torch.randn(32, 3), SO3Group().exp(0.2 * torch.randn(32, 3))], dim=-1)
+    delta = torch.cat([torch.randn(32, 3), SO3Group().exp(0.1 * torch.randn(32, 3))], dim=-1)
+    x_next = group.act(delta, x)
+    xi = group.infer_algebra(x, x_next)
+    x_next_g = group.act(group.exp(xi), x)
+    assert torch.allclose(x_next[..., :3], x_next_g[..., :3], atol=1e-5)
+    assert torch.allclose(x_next[..., 3:].abs(), x_next_g[..., 3:].abs(), atol=1e-5)
 
 
 def test_lie_gae_zero_rewards_zero_values():

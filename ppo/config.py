@@ -250,7 +250,7 @@ def get_config():
     # Lie-Algebraic Bellman / GAE parameters
     parser.add_argument("--use_lie_gae", action='store_true', default=False,
                         help="Use Lie-Algebraic GAE instead of the standard PPO GAE return computation.")
-    parser.add_argument("--lie_group", type=str, default="rn", choices=["rn", "so2", "se2"],
+    parser.add_argument("--lie_group", type=str, default="rn", choices=["rn", "so2", "se2", "so3", "se3"],
                         help="Lie group used for the geometric state component.")
     parser.add_argument("--lie_mode", type=str, default="observed", choices=["observed", "hybrid", "learned"],
                         help="Lie transition source for Bellman targets.")
