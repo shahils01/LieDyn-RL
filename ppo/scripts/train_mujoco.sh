@@ -11,14 +11,9 @@ python train/train_mujoco.py \
  --algorithm_name ${algo} \
  --experiment_name ${exp} \
  --scenario ${scenario} \
- --use_value_entropy True \
- --true_integration True \
- --use_lie_gae \
- --lie_group se2 \
- --lie_x_indices 0:3 \
  --num_quants 1 \
- --critic_lr 1e-4 \
- --lr 1e-4 \
+ --critic_lr 3e-4 \
+ --lr 3e-4 \
  --entropy_coef 0.01 \
  --gamma 0.99 \
  --gae_lambda 0.95 \
@@ -31,7 +26,7 @@ python train/train_mujoco.py \
  --eval_interval 25 \
  --num_env_steps 200000000 \
  --ppo_epoch 20 \
- --clip_param 0.1 \
+ --clip_param 0.2 \
  --use_eval \
  --add_center_xy \
  --use_state_agent \
