@@ -1,4 +1,4 @@
-
+*.pyc
 ppo/scripts/results
 ppo/scripts/results
 ppo/scripts/.ipynb_checkpoints
