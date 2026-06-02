@@ -14,3 +14,7 @@ ppo/__pycache__
 
 ppo/isaac_files/
 ppo/scripts/ppo_training.npy
+
+# Python bytecode
+__pycache__/
+*.py[cod]
