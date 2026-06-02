@@ -13,8 +13,12 @@ python train/train_mujoco.py \
  --scenario ${scenario} \
  --use_value_entropy True \
  --true_integration True \
- --critic_lr 3e-5 \
- --lr 3e-5 \
+ --use_lie_gae \
+ --lie_group se2 \
+ --lie_x_indices 0:3 \
+ --num_quants 1 \
+ --critic_lr 1e-4 \
+ --lr 1e-4 \
  --entropy_coef 0.01 \
  --gamma 0.99 \
  --gae_lambda 0.95 \
@@ -33,7 +37,6 @@ python train/train_mujoco.py \
  --use_state_agent \
  --use_value_active_masks \
  --use_policy_active_masks \
- --num_quants 64 \
  --use_wandb True \
  --wandb_name "xxx" \
  --user_name "shahil-shaik7-clemson-university" \

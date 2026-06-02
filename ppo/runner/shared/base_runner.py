@@ -7,6 +7,9 @@ from ppo.utils.shared_buffer import SharedReplayBuffer
 from ppo.algorithms.ppo.ppo_trainer import PPOTrainer as TrainAlgo
 from ppo.algorithms.ppo.algorithm.ppo_policy import PPO_Policy as Policy
 from ppo.utils.util import get_shape_from_obs_space, get_shape_from_act_space
+from ppo.lie.groups import build_lie_group
+from ppo.lie.returns import compute_lie_returns
+from ppo.lie.state import LieStateSpec
 
 def _t2n(x):
     """Convert torch tensor to a numpy array."""
@@ -102,6 +105,14 @@ class Runner(object):
                                         self.envs.action_space,
                                         self.all_args.env_name)
 
+        self.use_lie_gae = getattr(self.all_args, "use_lie_gae", False)
+        if self.use_lie_gae:
+            self.lie_state_spec = LieStateSpec.from_args(self.all_args, self.obs_shape)
+            self.lie_group = build_lie_group(self.all_args.lie_group, self.lie_state_spec.x_dim)
+        else:
+            self.lie_state_spec = None
+            self.lie_group = None
+
     def run(self):
         """Collect training data, perform training updates, and evaluate policy."""
         raise NotImplementedError
@@ -125,6 +136,14 @@ class Runner(object):
     def compute(self):
         """Calculate returns for the collected data."""
         self.trainer.prep_rollout()
+        if self.use_lie_gae:
+            compute_lie_returns(self.buffer,
+                                self.trainer.policy,
+                                self.lie_group,
+                                self.lie_state_spec,
+                                self.trainer.value_normalizer)
+            return
+
         next_values = self.trainer.policy.get_values(self.buffer.get_step_obs(-1),
                                                      np.concatenate(self.buffer.masks[-1]))
         

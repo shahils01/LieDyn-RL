@@ -247,6 +247,22 @@ def get_config():
                         action='store_false', default=True, help="by default True, whether to mask useless data in policy loss.")
     parser.add_argument("--huber_delta", type=float, default=10.0, help=" coefficience of huber loss.")
 
+    # Lie-Algebraic Bellman / GAE parameters
+    parser.add_argument("--use_lie_gae", action='store_true', default=False,
+                        help="Use Lie-Algebraic GAE instead of the standard PPO GAE return computation.")
+    parser.add_argument("--lie_group", type=str, default="rn", choices=["rn", "so2", "se2"],
+                        help="Lie group used for the geometric state component.")
+    parser.add_argument("--lie_mode", type=str, default="observed", choices=["observed"],
+                        help="Lie transition source. The initial implementation supports observed transitions.")
+    parser.add_argument("--lie_x_indices", type=str, default=None,
+                        help="Comma/range indices for geometric x inside the vector observation, e.g. '0:3' or '0,1,5'.")
+    parser.add_argument("--lie_obs_key", type=str, default="policy",
+                        help="Dict-observation key containing the vector state for Lie-GAE.")
+    parser.add_argument("--lie_dyn_coef", type=float, default=0.0,
+                        help="Reserved coefficient for learned Lie dynamics reconstruction loss.")
+    parser.add_argument("--lie_taylor_coef", type=float, default=0.0,
+                        help="Reserved coefficient for Lie-Taylor consistency loss.")
+
     # run parameters
     parser.add_argument("--use_linear_lr_decay", action='store_true',
                         default=False, help='use a linear schedule on the learning rate')

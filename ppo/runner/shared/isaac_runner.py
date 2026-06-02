@@ -156,7 +156,7 @@ class IsaacRunner(Runner):
         active_masks[dones.reshape(-1) == True] = np.zeros(((dones == True).sum(), 1), dtype=np.float32)
         active_masks[dones_env == True] = np.ones(((dones_env == True).sum(), 1), dtype=np.float32)
 
-        self.buffer.insert(obs, actions, action_log_probs, values, rewards, masks, active_masks)
+        self.buffer.insert(obs, actions, action_log_probs, values, rewards, masks, active_masks=active_masks)
 
     def log_train(self, train_infos, total_num_steps):
         train_infos["average_step_rewards"] = np.mean(self.buffer.rewards)

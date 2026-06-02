@@ -174,7 +174,7 @@ class SharedReplayBuffer(object):
 
                 gae = delta + self.gamma * self.gae_lambda * self.masks[step + 1] * gae
 
-                self.advantages[step] = (gae - gae.mean()) / (gae.std() + 1e-8) #gae
+                self.advantages[step] = gae
                 self.returns[step] = gae + self.value_preds[step]
 
     def wasserstein_like_distance(self, icdf1, icdf2, step):
