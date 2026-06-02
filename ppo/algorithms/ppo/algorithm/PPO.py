@@ -10,6 +10,9 @@ from ppo.algorithms.utils.transformer_act import discrete_parallel_act
 from ppo.algorithms.utils.transformer_act import continuous_autoregreesive_act
 from ppo.algorithms.utils.transformer_act import continuous_parallel_act
 from ppo.algorithms.utils.transformer_act import continuous_moe_act, continuous_moe_eval
+from ppo.lie.dynamics import LieDynamics
+from ppo.lie.groups import build_lie_group
+from ppo.lie.state import LieStateSpec
 
 
 def init_(m, gain=0.01, activate=False):
@@ -175,6 +178,45 @@ class Critic(nn.Module):
         return v_loc
 
 
+class LieInvariantCritic(nn.Module):
+    def __init__(self, base_critic, group, state_spec, orbit_samples=5, orbit_eps=0.05):
+        super().__init__()
+        self.base_critic = base_critic
+        self.group = group
+        self.state_spec = state_spec
+        self.orbit_samples = max(1, int(orbit_samples))
+        self.orbit_eps = float(orbit_eps)
+
+    def _orbit_xis(self, batch_size, device):
+        xis = [torch.zeros(batch_size, self.group.algebra_dim, device=device)]
+        basis_index = 0
+        sign = 1.0
+        while len(xis) < self.orbit_samples:
+            xi = torch.zeros(batch_size, self.group.algebra_dim, device=device)
+            xi[:, basis_index] = sign * self.orbit_eps
+            xis.append(xi)
+            if sign > 0:
+                sign = -1.0
+            else:
+                sign = 1.0
+                basis_index = (basis_index + 1) % self.group.algebra_dim
+        return xis
+
+    def _transform_obs(self, obs, xi):
+        x = self.state_spec.extract_x_torch(obs)
+        x_g = self.group.act(self.group.exp(xi), x)
+        return self.state_spec.replace_x_torch(obs, x_g)
+
+    def forward(self, obs):
+        if self.orbit_samples == 1:
+            return self.base_critic(obs)
+        vector = self.state_spec.vector_torch(obs)
+        values = []
+        for xi in self._orbit_xis(vector.shape[0], vector.device):
+            values.append(self.base_critic(self._transform_obs(obs, xi)))
+        return torch.stack(values, dim=0).mean(dim=0)
+
+
 class Actor(nn.Module):
 
     def __init__(self, obs_shape, action_dim, n_embd, device, action_type='Discrete', terrain_map_shape=None):
@@ -300,7 +342,7 @@ class MoE_GaussianPolicies(nn.Module):
 
 class PPO(nn.Module):
 
-    def __init__(self, obs_shape, action_dim, n_embd, moe_policy, device=torch.device("cpu"), action_type='Discrete', num_experts=5, num_quants=1, terrain_map_shape=None):
+    def __init__(self, obs_shape, action_dim, n_embd, moe_policy, device=torch.device("cpu"), action_type='Discrete', num_experts=5, num_quants=1, terrain_map_shape=None, args=None):
         super(PPO, self).__init__()
 
         self.action_dim = action_dim
@@ -311,9 +353,34 @@ class PPO(nn.Module):
         self.num_experts = num_experts
         self.moe_policy = moe_policy
         self.obs_shape = obs_shape
+        self.args = args
+        self.use_lie_gae = bool(getattr(args, "use_lie_gae", False)) if args is not None else False
+        self.lie_mode = getattr(args, "lie_mode", "observed") if args is not None else "observed"
+        self.lie_state_spec = None
+        self.lie_group = None
+        self.lie_dynamics = None
    
         # Actor-Critic Networks
-        self.critic = Critic(obs_shape, n_embd, device, num_quants, terrain_map_shape=terrain_map_shape)
+        critic = Critic(obs_shape, n_embd, device, num_quants, terrain_map_shape=terrain_map_shape)
+        if self.use_lie_gae:
+            self.lie_state_spec = LieStateSpec.from_args(args, obs_shape)
+            self.lie_group = build_lie_group(args.lie_group, self.lie_state_spec.x_dim)
+            if getattr(args, "lie_invariant_critic", False):
+                critic = LieInvariantCritic(
+                    critic,
+                    self.lie_group,
+                    self.lie_state_spec,
+                    orbit_samples=args.lie_orbit_samples,
+                    orbit_eps=args.lie_orbit_eps,
+                )
+            if self.lie_mode in ("hybrid", "learned"):
+                self.lie_dynamics = LieDynamics(
+                    self.lie_state_spec.vector_dim,
+                    action_dim,
+                    self.lie_group.algebra_dim,
+                    hidden_dim=args.lie_dynamics_hidden_dim,
+                )
+        self.critic = critic
 
         if moe_policy:
             self.gmm_MoE_policy = MoE_GaussianPolicies(obs_shape, action_dim, n_embd, num_experts, terrain_map_shape=terrain_map_shape)

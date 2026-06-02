@@ -7,6 +7,13 @@ from torch.autograd import grad
 from ppo.utils.util import get_gard_norm, huber_loss, mse_loss
 from ppo.utils.valuenorm import ValueNorm
 from ppo.algorithms.utils.util import check
+from ppo.lie.losses import lie_dynamics_losses
+
+
+def _to_tpdv(x, tpdv):
+    if isinstance(x, dict):
+        return {k: _to_tpdv(v, tpdv) for k, v in x.items()}
+    return x.to(**tpdv)
 
 class PPOTrainer:
     """
@@ -33,6 +40,12 @@ class PPOTrainer:
         self.max_grad_norm = args.max_grad_norm       
         self.huber_delta = args.huber_delta
         self.num_quants = args.num_quants
+        self.use_lie_dynamics = (
+            getattr(args, "use_lie_gae", False)
+            and getattr(args, "lie_mode", "observed") in ("hybrid", "learned")
+        )
+        self.lie_dyn_coef = getattr(args, "lie_dyn_coef", 0.0)
+        self.lie_xi_coef = getattr(args, "lie_xi_coef", 0.0)
 
         self._use_max_grad_norm = args.use_max_grad_norm
         self._use_clipped_value_loss = args.use_clipped_value_loss
@@ -143,10 +156,27 @@ class PPOTrainer:
         masks_batch = masks_batch.reshape(-1, 1)
         masks_batch = check(masks_batch).to(**self.tpdv)
         
+        lie_dyn_loss = torch.zeros((), **self.tpdv)
+        lie_xi_loss = torch.zeros((), **self.tpdv)
+        lie_xi_norm = torch.zeros((), **self.tpdv)
+        if self.use_lie_dynamics and self.policy.transformer.lie_dynamics is not None:
+            obs_for_lie = _to_tpdv(check(obs_batch), self.tpdv)
+            next_obs_for_lie = _to_tpdv(check(next_obs_batch), self.tpdv)
+            actions_for_lie = check(actions_batch).to(**self.tpdv).reshape(actions_batch.shape[0], -1)
+            lie_dyn_loss, lie_xi_loss, lie_xi_norm = lie_dynamics_losses(
+                self.policy.transformer.lie_group,
+                self.policy.transformer.lie_state_spec,
+                self.policy.transformer.lie_dynamics,
+                obs_for_lie,
+                actions_for_lie,
+                next_obs_for_lie,
+            )
+
         if gate_entropy == None:
             loss = policy_loss - dist_entropy * self.entropy_coef + value_loss * self.value_loss_coef
         else:
             loss = policy_loss - dist_entropy * self.entropy_coef + value_loss * self.value_loss_coef  - gate_entropy * self.entropy_coef
+        loss = loss + self.lie_dyn_coef * lie_dyn_loss + self.lie_xi_coef * lie_xi_loss
 
         
         self.policy.optimizer.zero_grad()
@@ -159,7 +189,7 @@ class PPOTrainer:
 
         self.policy.optimizer.step()
 
-        return value_loss, grad_norm, policy_loss, dist_entropy, grad_norm, imp_weights
+        return value_loss, grad_norm, policy_loss, dist_entropy, grad_norm, imp_weights, lie_dyn_loss, lie_xi_loss, lie_xi_norm
 
     def train(self, buffer, obs_shape=None):
         """
@@ -183,13 +213,18 @@ class PPOTrainer:
         train_info['actor_grad_norm'] = 0
         train_info['critic_grad_norm'] = 0
         train_info['ratio'] = 0
+        train_info['lie_dyn_loss'] = 0
+        train_info['lie_xi_loss'] = 0
+        train_info['lie_xi_norm'] = 0
+        train_info['lie_target_mix_alpha'] = getattr(self.policy, "last_lie_target_mix_alpha", 0.0)
 
         for _ in range(self.ppo_epoch):
             data_generator = buffer.feed_forward_generator_transformer(advantages, self.num_mini_batch)
 
             for sample in data_generator:
 
-                value_loss, critic_grad_norm, policy_loss, dist_entropy, actor_grad_norm, imp_weights \
+                value_loss, critic_grad_norm, policy_loss, dist_entropy, actor_grad_norm, imp_weights, \
+                    lie_dyn_loss, lie_xi_loss, lie_xi_norm \
                     = self.ppo_update(sample, obs_shape)
 
                 train_info['value_loss'] += value_loss.item()
@@ -198,11 +233,18 @@ class PPOTrainer:
                 train_info['actor_grad_norm'] += actor_grad_norm
                 train_info['critic_grad_norm'] += critic_grad_norm
                 train_info['ratio'] += imp_weights.mean()
+                train_info['lie_dyn_loss'] += lie_dyn_loss.item()
+                train_info['lie_xi_loss'] += lie_xi_loss.item()
+                train_info['lie_xi_norm'] += lie_xi_norm.item()
 
         num_updates = self.ppo_epoch * self.num_mini_batch
 
         for k in train_info.keys():
-            train_info[k] /= num_updates
+            if k != 'lie_target_mix_alpha':
+                train_info[k] /= num_updates
+
+        if getattr(self.policy, "args", None) is not None and getattr(self.policy.args, "use_lie_gae", False):
+            self.policy.lie_update_count += 1
  
         return train_info
 

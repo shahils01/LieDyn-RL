@@ -1,10 +1,15 @@
 import numpy as np
 import torch
+from types import SimpleNamespace
 
 from ppo.lie.gae import compute_lie_gae
+from ppo.lie.dynamics import LieDynamics
 from ppo.lie.groups.rn import RnGroup
 from ppo.lie.groups.se2 import SE2Group
 from ppo.lie.groups.so2 import SO2Group
+from ppo.lie.losses import learned_lie_next_obs_with_z, lie_dynamics_losses
+from ppo.lie.returns import lie_target_mix_alpha
+from ppo.lie.state import LieStateSpec
 
 
 def test_so2_exp_is_rotation():
@@ -77,3 +82,43 @@ def test_lie_gae_matches_standard_gae_when_next_values_match():
 
     assert np.allclose(lie_adv, standard_adv)
     assert np.allclose(lie_ret, standard_adv + values_all[:-1])
+
+
+def test_hybrid_alpha_schedule():
+    args = SimpleNamespace(
+        lie_mode="hybrid",
+        lie_dynamics_warmup_updates=2,
+        lie_dynamics_mix_updates=4,
+    )
+    policy = SimpleNamespace(args=args, lie_update_count=0)
+    assert lie_target_mix_alpha(policy) == 0.0
+    policy.lie_update_count = 4
+    assert lie_target_mix_alpha(policy) == 0.5
+    policy.lie_update_count = 10
+    assert lie_target_mix_alpha(policy) == 1.0
+
+
+def test_lie_dynamics_shape_and_learned_next_state_preserves_z():
+    group = SE2Group()
+    state_spec = LieStateSpec((5,), x_indices=np.array([0, 1, 2]))
+    dynamics = LieDynamics(state_dim=5, action_dim=2, algebra_dim=group.algebra_dim, hidden_dim=16)
+    obs = torch.randn(7, 5)
+    next_obs = torch.randn(7, 5)
+    actions = torch.randn(7, 2)
+    next_obs_pred, xi = learned_lie_next_obs_with_z(group, state_spec, dynamics, obs, actions, next_obs)
+    assert xi.shape == (7, 3)
+    assert next_obs_pred.shape == next_obs.shape
+    assert torch.allclose(next_obs_pred[:, 3:], next_obs[:, 3:])
+
+
+def test_lie_dynamics_losses_are_finite():
+    group = SO2Group()
+    state_spec = LieStateSpec((4,), x_indices=np.array([0]))
+    dynamics = LieDynamics(state_dim=4, action_dim=1, algebra_dim=group.algebra_dim, hidden_dim=16)
+    obs = torch.randn(9, 4)
+    next_obs = torch.randn(9, 4)
+    actions = torch.randn(9, 1)
+    dyn_loss, xi_loss, xi_norm = lie_dynamics_losses(group, state_spec, dynamics, obs, actions, next_obs)
+    assert torch.isfinite(dyn_loss)
+    assert torch.isfinite(xi_loss)
+    assert torch.isfinite(xi_norm)

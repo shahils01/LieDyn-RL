@@ -65,6 +65,9 @@ class LieStateSpec:
     def vector(self, obs):
         return obs[self.obs_key] if self.obs_is_dict else obs
 
+    def vector_torch(self, obs):
+        return obs[self.obs_key] if self.obs_is_dict else obs
+
     def with_vector(self, obs, vector):
         if self.obs_is_dict:
             out = {k: np.array(v, copy=True) for k, v in obs.items()}

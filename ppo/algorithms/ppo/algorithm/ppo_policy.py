@@ -60,11 +60,15 @@ class PPO_Policy:
                                action_type=self.action_type,
                                num_experts=args.num_experts,
                                num_quants=num_quants,
-                               terrain_map_shape=getattr(args, "terrain_map_shape", None))
+                               terrain_map_shape=getattr(args, "terrain_map_shape", None),
+                               args=args)
 
         self.optimizer = torch.optim.Adam(self.transformer.parameters(),
                                           lr=self.lr, eps=self.opti_eps,
                                           weight_decay=self.weight_decay)
+        self.args = args
+        self.lie_update_count = 0
+        self.last_lie_target_mix_alpha = 0.0
 
     def lr_decay(self, episode, episodes):
         """

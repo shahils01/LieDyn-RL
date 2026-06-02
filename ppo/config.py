@@ -252,14 +252,28 @@ def get_config():
                         help="Use Lie-Algebraic GAE instead of the standard PPO GAE return computation.")
     parser.add_argument("--lie_group", type=str, default="rn", choices=["rn", "so2", "se2"],
                         help="Lie group used for the geometric state component.")
-    parser.add_argument("--lie_mode", type=str, default="observed", choices=["observed"],
-                        help="Lie transition source. The initial implementation supports observed transitions.")
+    parser.add_argument("--lie_mode", type=str, default="observed", choices=["observed", "hybrid", "learned"],
+                        help="Lie transition source for Bellman targets.")
     parser.add_argument("--lie_x_indices", type=str, default=None,
                         help="Comma/range indices for geometric x inside the vector observation, e.g. '0:3' or '0,1,5'.")
     parser.add_argument("--lie_obs_key", type=str, default="policy",
                         help="Dict-observation key containing the vector state for Lie-GAE.")
-    parser.add_argument("--lie_dyn_coef", type=float, default=0.0,
-                        help="Reserved coefficient for learned Lie dynamics reconstruction loss.")
+    parser.add_argument("--lie_invariant_critic", action='store_true', default=False,
+                        help="Use orbit-pooled group-invariant value function.")
+    parser.add_argument("--lie_dyn_coef", type=float, default=1.0,
+                        help="Coefficient for learned Lie dynamics reconstruction loss.")
+    parser.add_argument("--lie_xi_coef", type=float, default=0.1,
+                        help="Coefficient for supervised Lie algebra displacement loss.")
+    parser.add_argument("--lie_dynamics_hidden_dim", type=int, default=256,
+                        help="Hidden dimension for xi_theta(s,a).")
+    parser.add_argument("--lie_dynamics_warmup_updates", type=int, default=10,
+                        help="Number of PPO train calls before learned dynamics affects Lie-GAE targets.")
+    parser.add_argument("--lie_dynamics_mix_updates", type=int, default=100,
+                        help="Number of PPO train calls over which hybrid Lie-GAE mixes to learned targets.")
+    parser.add_argument("--lie_orbit_samples", type=int, default=5,
+                        help="Number of deterministic group orbit samples pooled by the invariant critic.")
+    parser.add_argument("--lie_orbit_eps", type=float, default=0.05,
+                        help="Small algebra displacement used to build invariant critic orbit samples.")
     parser.add_argument("--lie_taylor_coef", type=float, default=0.0,
                         help="Reserved coefficient for Lie-Taylor consistency loss.")
 

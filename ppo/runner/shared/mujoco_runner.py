@@ -37,7 +37,7 @@ class MujocoRunner(Runner):
         start = time.time()
         episodes = int(self.num_env_steps) // self.episode_length // self.n_rollout_threads
 
-        train_episode_rewards = [0 for _ in range(self.n_rollout_threads)]
+        train_episode_rewards = np.zeros(self.n_rollout_threads, dtype=np.float32)
         done_episodes_rewards = []
 
         for episode in range(episodes):
@@ -56,11 +56,11 @@ class MujocoRunner(Runner):
                 truncated = truncated.reshape(-1, 1)
                                 
                 dones_env = np.all(dones, axis=1)
-                reward_env = np.mean(rewards).flatten()
+                reward_env = rewards.reshape(-1)
                 train_episode_rewards += reward_env
                 for t in range(self.n_rollout_threads):
                     if dones_env[t]:
-                        done_episodes_rewards.append(train_episode_rewards[t])
+                        done_episodes_rewards.append(float(train_episode_rewards[t]))
                         train_episode_rewards[t] = 0
 
                 # Bootstrap reward for truncated episodes (Done after computing train_episode_rewards)
@@ -104,6 +104,10 @@ class MujocoRunner(Runner):
                     
                     if self.use_wandb:
                         wandb.log({"average_episode_rewards": aver_episode_rewards}, step=total_num_steps)
+                    else:
+                        self.writter.add_scalars("average_episode_rewards",
+                                                 {"average_episode_rewards": aver_episode_rewards},
+                                                 total_num_steps)
                         
                     #self.writter.add_scalars("train_episode_rewards", {"aver_rewards": aver_episode_rewards}, total_num_steps)
                     if self.reward_list_training is None:
